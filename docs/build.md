@@ -44,7 +44,7 @@ En una TV o en el emulador de Android TV (`emulator -avd <tv>`):
 1. Primera vez: aparece la bienvenida; «Buscar canales» muestra el avance y termina en menos de un
    minuto con «N canales encontrados» y «Ver cuáles» (lo que quedó fuera y por qué).
 2. Abre a pantalla completa en el último canal visto; ↑ ↓ cambian de canal, los números van directo,
-   Atrás vuelve al canal anterior, OK o ← abren la lista.
+   Atrás dos veces sale (la primera avisa «Presiona Atrás otra vez para salir»), OK o ← abren la lista.
 3. → muestra los detalles: «Ahora / Después» si hay guía, el servidor de la señal y la lista de origen.
 4. Mantener OK sobre un canal lo marca como favorito y aparece en «★ Favoritos».
 5. «Agregar listas»: desde otro equipo de la red (o con `adb forward tcp:8642 tcp:8642` en el
