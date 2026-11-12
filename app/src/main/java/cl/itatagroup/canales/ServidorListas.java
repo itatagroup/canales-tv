@@ -36,7 +36,8 @@ public final class ServidorListas {
     /** En el hilo principal. */
     void agregar(String nombre, String url);
 
-    void quitar(String url);
+    /** Quita la lista en esa posición de {@link #listas()}. */
+    void quitar(int indice);
 
     /** Listas actuales: pares {nombre, url}. Se llama desde el hilo del servidor. */
     List<String[]> listas();
@@ -57,9 +58,17 @@ public final class ServidorListas {
     socket = new ServerSocket(PUERTO);
     new Thread(() -> {
       while (!socket.isClosed()) {
-        try (Socket s = socket.accept()) {
-          s.setSoTimeout(5000);
-          atender(s);
+        try {
+          Socket s = socket.accept();
+          // Un hilo por conexión: una conexión lenta (p. ej. una precarga del navegador) no bloquea a las demás.
+          new Thread(() -> {
+            try (Socket c = s) {
+              c.setSoTimeout(5000);
+              atender(c);
+            } catch (IOException | RuntimeException e) {
+              Log.w(TAG, "pedido a Mis listas", e);
+            }
+          }, "mis-listas-pedido").start();
         } catch (IOException e) {
           if (!socket.isClosed()) Log.w(TAG, "servidor de listas", e);
         }
@@ -104,7 +113,11 @@ public final class ServidorListas {
       if (fin < 0 && (fin = hasta.indexOf("\r\n\r\n")) >= 0) {
         for (String linea : hasta.substring(0, fin).split("\r\n")) {
           if (linea.toLowerCase(Locale.ROOT).startsWith("content-length:")) {
-            largo = Math.min(Integer.parseInt(linea.substring(15).trim()), MAX_PEDIDO);
+            try {
+              largo = Math.max(0, Math.min(Integer.parseInt(linea.substring(15).trim()), MAX_PEDIDO));
+            } catch (NumberFormatException e) {
+              largo = 0; // largo inválido: se lee lo que haya llegado
+            }
           }
         }
       }
@@ -126,9 +139,15 @@ public final class ServidorListas {
         }
         mensaje = "El código no coincide con el que muestra la tele.";
       } else if (primera.startsWith("POST /quitar")) {
-        String url = campos.get("url");
-        if (url != null) principal.post(() -> cambios.quitar(url));
-        mensaje = "Lista quitada.";
+        // Se quita por posición, no por enlace: el enlace (que en Xtream lleva usuario y clave) nunca
+        // viaja en la página.
+        try {
+          int indice = Integer.parseInt(campos.get("i"));
+          principal.post(() -> cambios.quitar(indice));
+          mensaje = "Lista quitada.";
+        } catch (NumberFormatException e) {
+          mensaje = "No se encontró esa lista.";
+        }
       } else {
         String nombre = limpiar(campos.get("nombre"));
         String url = campos.get("url") == null ? "" : campos.get("url").trim();
@@ -173,10 +192,13 @@ public final class ServidorListas {
 
   private String pagina(String mensaje) {
     StringBuilder filas = new StringBuilder();
-    for (String[] l : cambios.listas()) {
-      filas.append("<li><b>").append(html(l[0])).append("</b><br><small>").append(html(l[1])).append("</small>")
-          .append("<form method=post action=/quitar><input type=hidden name=url value=\"").append(html(l[1]))
-          .append("\"><input name=codigo inputmode=numeric maxlength=4 placeholder=Código required>")
+    List<String[]> listas = cambios.listas();
+    for (int i = 0; i < listas.size(); i++) {
+      String[] l = listas.get(i);
+      // Solo el nombre y el servidor: la página se ve sin código y el enlace puede llevar usuario y clave.
+      filas.append("<li><b>").append(html(l[0])).append("</b><br><small>").append(html(Reproductor.hostDe(l[1])))
+          .append("</small><form method=post action=/quitar><input type=hidden name=i value=").append(i)
+          .append("><input name=codigo inputmode=numeric maxlength=4 placeholder=Código required>")
           .append("<button>Quitar</button></form></li>");
     }
     if (filas.length() == 0) filas.append("<li>Todavía no hay listas.</li>");

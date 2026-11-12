@@ -198,8 +198,12 @@ public class Reproductor extends Activity {
   @Override
   protected void onStop() {
     handler.removeCallbacksAndMessages(null);
-    detenerServidor();
-    if (tarjeta.getVisibility() == View.VISIBLE && servidor == null) tarjeta.setVisibility(View.GONE);
+    // Al salir de la app se cierra la página de Mis listas, y con ella su tarjeta. Las demás tarjetas
+    // (la bienvenida, una búsqueda en curso) se quedan para cuando se vuelva.
+    if (servidor != null) {
+      detenerServidor();
+      tarjeta.setVisibility(View.GONE);
+    }
     if (player != null) {
       player.release();
       player = null;
@@ -518,11 +522,11 @@ public class Reproductor extends Activity {
       }
 
       @Override
-      public void quitar(String url) {
+      public void quitar(int indice) {
         List<String[]> listas = almacen.listas();
-        List<String[]> quedan = new ArrayList<>();
-        for (String[] l : listas) if (!l[1].equals(url)) quedan.add(l);
-        almacen.guardarListas(quedan);
+        if (indice < 0 || indice >= listas.size()) return;
+        listas.remove(indice);
+        almacen.guardarListas(listas);
         recargarListas();
       }
 
@@ -553,7 +557,7 @@ public class Reproductor extends Activity {
     List<String[]> listas = almacen.listas();
     if (listas.isEmpty()) return "\n\n" + getString(R.string.listas_ninguna);
     StringBuilder sb = new StringBuilder("\n");
-    for (String[] l : listas) sb.append("\n• ").append(l[0]).append("  (").append(servidor(l[1])).append(")");
+    for (String[] l : listas) sb.append("\n• ").append(l[0]).append("  (").append(hostDe(l[1])).append(")");
     return sb.toString();
   }
 
@@ -598,7 +602,7 @@ public class Reproductor extends Activity {
     List<String> origen = new ArrayList<>();
     for (Catalogo.Excluido x : fuera) {
       if (x.motivo.equals(Catalogo.MOTIVO_PAGO)) pago.add(x.nombre);
-      else origen.add(x.nombre + " (" + servidor(x.url) + ")");
+      else origen.add(x.nombre + " (" + hostDe(x.url) + ")");
     }
     StringBuilder sb = new StringBuilder();
     if (!pago.isEmpty()) sb.append(getString(R.string.fuera_pago, String.join(", ", pago)));
@@ -610,7 +614,7 @@ public class Reproductor extends Activity {
   }
 
   /** El servidor de un enlace, para mostrar de dónde viene una señal. */
-  static String servidor(String url) {
+  static String hostDe(String url) {
     try {
       String host = Uri.parse(url).getHost();
       return host == null ? url : host;
@@ -804,7 +808,7 @@ public class Reproductor extends Activity {
         if (actual != null) {
           // Detalles para verificar: de qué servidor viene la señal y de qué lista salió el canal.
           String calidad = actual.calidad.isEmpty() ? actual.categoria : actual.categoria + " · " + actual.calidad;
-          String detalle = getString(R.string.detalle, calidad, servidor(actual.url), actual.fuente);
+          String detalle = getString(R.string.detalle, calidad, hostDe(actual.url), actual.fuente);
           String estado = conError ? getString(R.string.sin_senal) : estadoDe(actual);
           if (!estado.isEmpty()) detalle = estado + "\n" + detalle;
           mostrarRotulo(actual, detalle);

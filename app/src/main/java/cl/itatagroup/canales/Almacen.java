@@ -42,9 +42,21 @@ public final class Almacen {
     return leer(archivoListas);
   }
 
-  /** Mis listas empiezan en el 1000, para no chocar con los números de la búsqueda. */
+  /**
+   * Mis listas empiezan en el 1000, para no chocar con los de la búsqueda. Como en {@link #guardar},
+   * un canal que ya estaba conserva su número al agregar o quitar otra lista.
+   */
   public void guardarCanalesDeListas(List<Canal> canales) {
-    for (int i = 0; i < canales.size(); i++) canales.get(i).numero = 1000 + i;
+    java.util.Map<String, Integer> antes = new java.util.HashMap<>();
+    int siguiente = 1000;
+    for (Canal a : canalesDeListas()) {
+      antes.put(a.id, a.numero);
+      siguiente = Math.max(siguiente, a.numero + 1);
+    }
+    for (Canal c : canales) {
+      Integer n = antes.get(c.id);
+      c.numero = n != null ? n : siguiente++;
+    }
     escribir(archivoListas, canales);
   }
 

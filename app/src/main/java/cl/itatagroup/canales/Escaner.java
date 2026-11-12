@@ -38,7 +38,9 @@ public final class Escaner {
   static final String[] FUENTES = {Catalogo.TVN_EN_VIVO, CHILE, IDIOMAS[0], IDIOMAS[1], Guia.CHILE};
 
   private static final int ESPERA_MS = 8000;
-  private static final int MAX_LISTA = 4 * 1024 * 1024;
+  private static final int MAX_LISTA = 8 * 1024 * 1024;
+  /** Las listas propias pueden ser grandes (un proveedor Xtream trae decenas de miles de entradas). */
+  private static final long MAX_LISTA_PROPIA = 64L * 1024 * 1024;
 
   public interface Avance {
     void probando(int hechos, int total, int vivos);
@@ -104,7 +106,7 @@ public final class Escaner {
       int fallidas = 0;
       for (String[] l : listas) {
         try {
-          canales.addAll(Catalogo.deListaPropia(bajarLista(l[1]), l[0]));
+          canales.addAll(Catalogo.deListaPropia(bajarLista(l[1], MAX_LISTA_PROPIA), l[0]));
         } catch (IOException | RuntimeException e) {
           Log.w(TAG, "no se pudo cargar la lista " + l[0], e);
           fallidas++;
@@ -163,15 +165,53 @@ public final class Escaner {
   }
 
   private List<Catalogo.Entrada> bajarLista(String url) throws IOException {
+    return bajarLista(url, MAX_LISTA);
+  }
+
+  /**
+   * El límite se cuenta en los bytes leídos, no en el Content-Length (que puede faltar): una lista
+   * enorme o sin fin no llena la memoria de la tele.
+   */
+  private List<Catalogo.Entrada> bajarLista(String url, long maximo) throws IOException {
     HttpURLConnection con = abrir(url);
     try {
       if (con.getResponseCode() != 200) throw new IOException("HTTP " + con.getResponseCode());
-      if (con.getContentLength() > MAX_LISTA) throw new IOException("lista demasiado grande");
-      try (BufferedReader r = new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8))) {
+      if (con.getContentLength() > maximo) throw new IOException("lista demasiado grande");
+      try (BufferedReader r = new BufferedReader(new InputStreamReader(new Limitado(con.getInputStream(), maximo),
+          StandardCharsets.UTF_8))) {
         return Catalogo.leer(r);
       }
     } finally {
       con.disconnect();
+    }
+  }
+
+  /** Corta la lectura con un error al pasar de {@code maximo} bytes. */
+  private static final class Limitado extends java.io.FilterInputStream {
+    private final long maximo;
+    private long leidos;
+
+    Limitado(InputStream in, long maximo) {
+      super(in);
+      this.maximo = maximo;
+    }
+
+    private void contar(long n) throws IOException {
+      if (n > 0 && (leidos += n) > maximo) throw new IOException("lista de más de " + (maximo >> 20) + " MB");
+    }
+
+    @Override
+    public int read() throws IOException {
+      int b = super.read();
+      if (b >= 0) contar(1);
+      return b;
+    }
+
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+      int n = super.read(b, off, len);
+      contar(n);
+      return n;
     }
   }
 
