@@ -82,10 +82,14 @@ public class Reproductor extends Activity {
   private final FilasAdapter adapterCategorias = new FilasAdapter(true);
   private final FilasAdapter adapterCanales = new FilasAdapter(false);
   private Set<String> favoritos;
+  /** Programación por id de canal, de la última búsqueda. */
+  private java.util.Map<String, List<Guia.Programa>> guia = new java.util.HashMap<>();
 
   private Canal actual, anterior;
   private long inicio;
   private boolean conError;
+  /** Ya se reintentó este canal con su primera variante. */
+  private boolean conVariante;
   private String numeroTecleado = "";
 
   @Override
@@ -94,6 +98,7 @@ public class Reproductor extends Activity {
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     setContentView(R.layout.reproductor);
     almacen = new Almacen(this);
+    guia = almacen.guia();
     actualizador = new Actualizador(this, "itatagroup/canales-tv", "canales-android", "Canales");
     video = findViewById(R.id.video);
     rotulo = findViewById(R.id.rotulo);
@@ -166,14 +171,22 @@ public class Reproductor extends Activity {
       public void onRenderedFirstFrame() {
         Log.i(TAG, (actual != null ? actual.nombre : "?") + ": primera imagen en " + (SystemClock.elapsedRealtime() - inicio) + " ms");
         conError = false;
-        if (actual != null) rotuloEstado.setText(actual.noSiempre ? getString(R.string.no_siempre) : "");
+        if (actual != null) rotuloEstado.setText(estadoDe(actual));
         programarOcultarRotulo();
       }
 
       @Override
       public void onPlayerError(PlaybackException error) {
         Log.w(TAG, (actual != null ? actual.nombre : "?") + ": " + error.getErrorCodeName(), error);
+        // Listas con extensiones nuevas de HLS (p. ej. Content Steering) que Media3 no lee: se
+        // reintenta una vez con la primera variante, que es HLS común.
+        if (error.errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED && actual != null && !conVariante) {
+          probarVariante(actual);
+          return;
+        }
         conError = true;
+        // Sin señal: negro, no la última imagen del canal anterior congelada.
+        video.setVisibility(View.INVISIBLE);
         handler.removeCallbacks(ocultarRotulo);
         rotulo.setVisibility(View.VISIBLE);
         rotuloEstado.setText(R.string.sin_senal);
@@ -268,14 +281,66 @@ public class Reproductor extends Activity {
   }
 
   private void reproducir(Canal c) {
+    conVariante = false;
+    mostrarRotulo(c, getString(R.string.cargando));
+    reproducirUrl(c.url);
+  }
+
+  /** Baja la lista principal y reproduce su primera variante (ver onPlayerError). */
+  private void probarVariante(Canal c) {
+    conVariante = true;
+    new Thread(() -> {
+      String variante = null;
+      java.net.HttpURLConnection con = null;
+      try {
+        con = (java.net.HttpURLConnection) new java.net.URL(c.url).openConnection();
+        con.setConnectTimeout(8000);
+        con.setReadTimeout(8000);
+        con.setRequestProperty("User-Agent", userAgent);
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(con.getInputStream(),
+            java.nio.charset.StandardCharsets.UTF_8))) {
+          String l;
+          boolean siguienteEsVariante = false;
+          int leidas = 0;
+          while ((l = r.readLine()) != null && leidas++ < 500) {
+            l = l.trim();
+            if (l.startsWith("#EXT-X-STREAM-INF")) siguienteEsVariante = true;
+            else if (siguienteEsVariante && !l.isEmpty() && !l.startsWith("#")) {
+              variante = new java.net.URL(con.getURL(), l).toString();
+              break;
+            }
+          }
+        }
+      } catch (java.io.IOException | RuntimeException e) {
+        Log.w(TAG, "sin variante para " + c.nombre, e);
+      } finally {
+        if (con != null) con.disconnect();
+      }
+      String v = variante;
+      handler.post(() -> {
+        if (!c.equals(actual)) return; // ya se cambió de canal
+        if (v == null) {
+          conError = true;
+          video.setVisibility(View.INVISIBLE);
+          rotulo.setVisibility(View.VISIBLE);
+          rotuloEstado.setText(R.string.sin_senal);
+        } else {
+          Log.i(TAG, c.nombre + ": se reintenta con la variante " + v);
+          reproducirUrl(v);
+        }
+      });
+    }, "variante").start();
+  }
+
+  private void reproducirUrl(String url) {
     if (player == null) return;
     conError = false;
-    mostrarRotulo(c, getString(R.string.cargando));
+    video.setVisibility(View.VISIBLE);
     // User-Agent honesto: dice qué app es y su versión, nada del equipo ni del usuario.
     DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
         .setUserAgent(userAgent)
         .setAllowCrossProtocolRedirects(true);
-    MediaItem item = new MediaItem.Builder().setUri(Uri.parse(c.url)).setMimeType(MimeTypes.APPLICATION_M3U8).build();
+    MediaItem item = new MediaItem.Builder().setUri(Uri.parse(url)).setMimeType(MimeTypes.APPLICATION_M3U8).build();
     inicio = SystemClock.elapsedRealtime();
     player.setMediaSource(new HlsMediaSource.Factory(http).createMediaSource(item));
     player.prepare();
@@ -311,6 +376,25 @@ public class Reproductor extends Activity {
   }
 
   // --- rótulo y avisos ---
+
+  /** Línea bajo el nombre: «Ahora: … · Después: …» si hay guía, y si no transmite todo el día. */
+  private String estadoDe(Canal c) {
+    StringBuilder sb = new StringBuilder();
+    Guia.Programa[] ad = Guia.ahoraYDespues(guia.get(c.id), System.currentTimeMillis());
+    if (ad != null) {
+      java.text.DateFormat hora = android.text.format.DateFormat.getTimeFormat(this);
+      if (ad[0] != null) sb.append(getString(R.string.guia_ahora, ad[0].titulo, hora.format(new java.util.Date(ad[0].fin))));
+      if (ad[1] != null) {
+        if (sb.length() > 0) sb.append('\n');
+        sb.append(getString(R.string.guia_despues, hora.format(new java.util.Date(ad[1].inicio)), ad[1].titulo));
+      }
+    }
+    if (c.noSiempre) {
+      if (sb.length() > 0) sb.append('\n');
+      sb.append(getString(R.string.no_siempre));
+    }
+    return sb.toString();
+  }
 
   private void mostrarRotulo(Canal c, String estado) {
     handler.removeCallbacks(ocultarRotulo);
@@ -546,9 +630,10 @@ public class Reproductor extends Activity {
     mostrarTarjeta(getString(R.string.buscando), "", getString(R.string.cancelar), v -> cancelarBusqueda());
     tarjetaProgreso.setVisibility(View.VISIBLE);
     tarjetaProgreso.setProgress(0);
-    escaner = new Escaner(userAgent);
+    Escaner buscador = new Escaner(userAgent);
+    escaner = buscador;
     long t0 = SystemClock.elapsedRealtime();
-    escaner.buscar(new Escaner.Avance() {
+    buscador.buscar(new Escaner.Avance() {
       @Override
       public void probando(int hechos, int total, int vivos) {
         tarjetaProgreso.setMax(total);
@@ -567,6 +652,8 @@ public class Reproductor extends Activity {
           return;
         }
         almacen.guardar(vivos);
+        almacen.guardarGuia(buscador.guia);
+        guia = buscador.guia;
         cargar();
         int pago = 0;
         for (Catalogo.Excluido x : fuera) if (x.motivo.equals(Catalogo.MOTIVO_PAGO)) pago++;
@@ -718,8 +805,8 @@ public class Reproductor extends Activity {
           // Detalles para verificar: de qué servidor viene la señal y de qué lista salió el canal.
           String calidad = actual.calidad.isEmpty() ? actual.categoria : actual.categoria + " · " + actual.calidad;
           String detalle = getString(R.string.detalle, calidad, servidor(actual.url), actual.fuente);
-          if (conError) detalle = getString(R.string.sin_senal) + "\n" + detalle;
-          else if (actual.noSiempre) detalle = getString(R.string.no_siempre) + "\n" + detalle;
+          String estado = conError ? getString(R.string.sin_senal) : estadoDe(actual);
+          if (!estado.isEmpty()) detalle = estado + "\n" + detalle;
           mostrarRotulo(actual, detalle);
           handler.removeCallbacks(ocultarRotulo);
           if (!conError) handler.postDelayed(ocultarRotulo, ROTULO_MS * 2);

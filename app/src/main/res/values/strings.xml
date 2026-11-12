@@ -55,4 +55,6 @@
   <string name="listas_fallidas">%1$d listas no se pudieron cargar.</string>
   <string name="listas_sin_red">La tele no está conectada a una red local. Conéctala al Wi-Fi para agregar listas desde el teléfono.</string>
   <string name="listo">Listo</string>
+  <string name="guia_ahora">Ahora: %1$s (hasta las %2$s)</string>
+  <string name="guia_despues">%1$s: %2$s</string>
 </resources>

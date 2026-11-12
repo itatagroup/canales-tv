@@ -35,7 +35,7 @@ public final class Escaner {
     "https://iptv-org.github.io/iptv/languages/spa.m3u",
     "https://iptv-org.github.io/iptv/languages/eng.m3u",
   };
-  static final String[] FUENTES = {Catalogo.TVN_EN_VIVO, CHILE, IDIOMAS[0], IDIOMAS[1]};
+  static final String[] FUENTES = {Catalogo.TVN_EN_VIVO, CHILE, IDIOMAS[0], IDIOMAS[1], Guia.CHILE};
 
   private static final int ESPERA_MS = 8000;
   private static final int MAX_LISTA = 4 * 1024 * 1024;
@@ -84,6 +84,7 @@ public final class Escaner {
         List<Canal> vivos = probarTodos(candidatos, avance);
         // TVN, 13 y CHV sin enlace abierto: van siempre, y abren su app oficial.
         vivos.addAll(Catalogo.conAppPropia());
+        guia = bajarGuia(vivos);
         if (!cancelado) principal.post(() -> avance.listo(vivos, fuera));
       } catch (IOException e) {
         Log.w(TAG, "búsqueda fallida", e);
@@ -122,6 +123,28 @@ public final class Escaner {
       if (!porNombre.containsKey(clave)) porNombre.put(clave, c);
     }
     return new ArrayList<>(porNombre.values());
+  }
+
+  /** Guía de la última búsqueda (por id de canal), o vacía si no se pudo bajar. */
+  public volatile Map<String, List<Guia.Programa>> guia = new java.util.HashMap<>();
+
+  /** La guía es un extra: si falla, la búsqueda sigue sin ella. */
+  private Map<String, List<Guia.Programa>> bajarGuia(List<Canal> canales) {
+    try {
+      HttpURLConnection con = abrir(Guia.CHILE);
+      try {
+        if (con.getResponseCode() != 200) throw new IOException("HTTP " + con.getResponseCode());
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(
+            new java.util.zip.GZIPInputStream(con.getInputStream()), StandardCharsets.UTF_8))) {
+          return Guia.leer(r, canales, System.currentTimeMillis());
+        }
+      } finally {
+        con.disconnect();
+      }
+    } catch (IOException | RuntimeException e) {
+      Log.w(TAG, "sin guía de programación", e);
+      return new java.util.HashMap<>();
+    }
   }
 
   private String bajarTexto(String url) throws IOException {

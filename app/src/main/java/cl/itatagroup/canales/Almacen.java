@@ -137,6 +137,42 @@ public final class Almacen {
     prefs.edit().putStringSet("favoritos", f).apply();
   }
 
+  /** Guarda la guía de programación de la última búsqueda (solo los canales que calzaron). */
+  public void guardarGuia(java.util.Map<String, List<Guia.Programa>> guia) {
+    try {
+      org.json.JSONObject o = new org.json.JSONObject();
+      for (java.util.Map.Entry<String, List<Guia.Programa>> e : guia.entrySet()) {
+        JSONArray arr = new JSONArray();
+        for (Guia.Programa p : e.getValue()) arr.put(new JSONArray().put(p.inicio).put(p.fin).put(p.titulo));
+        o.put(e.getKey(), arr);
+      }
+      prefs.edit().putString("guia", o.toString()).apply();
+    } catch (JSONException e) {
+      Log.w(TAG, "no se pudo guardar la guía", e);
+    }
+  }
+
+  public java.util.Map<String, List<Guia.Programa>> guia() {
+    java.util.Map<String, List<Guia.Programa>> guia = new java.util.HashMap<>();
+    try {
+      org.json.JSONObject o = new org.json.JSONObject(prefs.getString("guia", "{}"));
+      java.util.Iterator<String> ids = o.keys();
+      while (ids.hasNext()) {
+        String id = ids.next();
+        JSONArray arr = o.getJSONArray(id);
+        List<Guia.Programa> lista = new ArrayList<>();
+        for (int i = 0; i < arr.length(); i++) {
+          JSONArray p = arr.getJSONArray(i);
+          lista.add(new Guia.Programa(p.getLong(0), p.getLong(1), p.getString(2)));
+        }
+        guia.put(id, lista);
+      }
+    } catch (JSONException e) {
+      Log.w(TAG, "guía ilegible", e);
+    }
+    return guia;
+  }
+
   /** Lo que la última búsqueda dejó fuera, como texto para mostrarlo en «Qué hace esta app». */
   public String fuera() {
     return prefs.getString("fuera", "");

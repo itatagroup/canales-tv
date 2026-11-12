@@ -21,6 +21,6 @@ const src = join(root, "app", "src", "main", "java", "cl", "itatagroup", "canale
 const sep = isWin ? ";" : ":";
 execFileSync(bin("javac"), [
   "-encoding", "UTF-8", "-cp", androidJar, "-d", out,
-  join(src, "Canal.java"), join(src, "Catalogo.java"), join(root, "tools", "pruebas", "ProbarCatalogo.java"),
+  join(src, "Canal.java"), join(src, "Catalogo.java"), join(src, "Guia.java"), join(root, "tools", "pruebas", "ProbarCatalogo.java"),
 ], { stdio: "inherit" });
 execFileSync(bin("java"), ["-cp", [out, androidJar].join(sep), "ProbarCatalogo", ...process.argv.slice(2)], { stdio: "inherit" });

@@ -1,5 +1,6 @@
 import cl.itatagroup.canales.Canal;
 import cl.itatagroup.canales.Catalogo;
+import cl.itatagroup.canales.Guia;
 
 import java.io.BufferedReader;
 import java.io.StringReader;
@@ -57,12 +58,35 @@ public class ProbarCatalogo {
         && t.get(1).url.equals("https://mdstrm.com/live-stream-playlist/5653641561b4eba30a7e4929.m3u8"), "señales de tvn.cl");
     si(!Catalogo.origenDudoso(t.get(0).url), "mdstrm de TVN no es dudoso");
 
+    // Guía: normalizar y parecidos
+    String xml = "<channel id=\"Canal.La.Red.(Chile).cl\">\n<display-name lang=\"es\">La Red</display-name>\n</channel>\n"
+        + "<programme start=\"20261112090000 -0300\" stop=\"20261112100000 -0300\" channel=\"Canal.La.Red.(Chile).cl\">\n"
+        + "<title lang=\"es\">Hola Chile</title>\n</programme>\n"
+        + "<programme start=\"20261112100000 -0300\" stop=\"20261112110000 -0300\" channel=\"Canal.La.Red.(Chile).cl\">\n"
+        + "<title>Mentiras &amp; Verdades</title>\n</programme>\n";
+    List<Canal> laRed = new java.util.ArrayList<>();
+    laRed.add(new Canal("LaRed.cl", "La Red", Catalogo.NACIONALES, "https://x/y.m3u8", "", false, "iptv-org"));
+    long ahora = new java.text.SimpleDateFormat("yyyyMMddHHmmss Z").parse("20261112093000 -0300").getTime();
+    java.util.Map<String, List<Guia.Programa>> g = Guia.leer(new BufferedReader(new StringReader(xml)), laRed, ahora);
+    Guia.Programa[] ad = Guia.ahoraYDespues(g.get("LaRed.cl"), ahora);
+    si(ad != null && ad[0].titulo.equals("Hola Chile") && ad[1].titulo.equals("Mentiras & Verdades"), "guía: ahora y después de La Red");
+
     if (args.length >= 1) {
       List<Canal> chile = Catalogo.deChile(leerArchivo(args[0]));
       contar("Chile", chile);
       for (Canal x : chile) si(!x.nombre.startsWith("Mega"), "Mega de origen dudoso no debería entrar: " + x.url);
     }
-    for (int i = 1; i < args.length; i++) contar("Internacional " + args[i], Catalogo.internacionales(leerArchivo(args[i])));
+    for (String a : args) {
+      if (!a.endsWith(".xml") || args.length < 1) continue;
+      List<Canal> todos = new java.util.ArrayList<>(Catalogo.deChile(leerArchivo(args[0])));
+      for (int i = 1; i < args.length; i++) if (args[i].endsWith(".m3u")) todos.addAll(Catalogo.internacionales(leerArchivo(args[i])));
+      todos.addAll(Catalogo.conAppPropia());
+      try (BufferedReader r = Files.newBufferedReader(Paths.get(a), StandardCharsets.UTF_8)) {
+        java.util.Map<String, List<Guia.Programa>> guia = Guia.leer(r, todos, System.currentTimeMillis());
+        System.out.println("Guía: " + guia.size() + " canales con programación: " + guia.keySet());
+      }
+    }
+    for (int i = 1; i < args.length; i++) if (args[i].endsWith(".m3u")) contar("Internacional " + args[i], Catalogo.internacionales(leerArchivo(args[i])));
 
     System.out.println(fallas == 0 ? "OK: todas las pruebas pasan" : fallas + " fallas");
     System.exit(fallas == 0 ? 0 : 1);
