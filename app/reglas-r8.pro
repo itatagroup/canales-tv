@@ -4,6 +4,7 @@
 
 # Las actividades y receptores los abre Android por nombre, desde el manifiesto.
 -keep class cl.itatagroup.canales.** { *; }
+-keep class cl.itatagroup.actualizacion.** { *; }
 
 # Anotaciones que solo existen al compilar (no van en el APK).
 -dontwarn androidx.annotation.**

@@ -28,6 +28,8 @@ import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
 
+import cl.itatagroup.actualizacion.Actualizador;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -49,6 +51,10 @@ public class Reproductor extends Activity {
   private static final String FAVORITOS = "★ Favoritos";
   private static final String ACCION_BUSCAR = "Buscar canales";
   private static final String ACCION_ACERCA = "Qué hace esta app";
+  private static final String ACCION_ACTUALIZAR = "Buscar actualización";
+  private static final String ACCION_LISTAS = "Agregar listas";
+  /** Manifiesto firmado del último release (mismo contrato que launcher-tv, ver docs/actualizaciones.md). */
+  private static final String MANIFIESTO = "https://github.com/itatagroup/canales-tv/releases/latest/download/version.json";
 
   private final Handler handler = new Handler(Looper.getMainLooper());
   private final Runnable ocultarRotulo = () -> this.rotulo.setVisibility(View.GONE);
@@ -57,6 +63,8 @@ public class Reproductor extends Activity {
   private Almacen almacen;
   private ExoPlayer player;
   private Escaner escaner;
+  private Actualizador actualizador;
+  private ServidorListas servidor;
   private String userAgent;
 
   private SurfaceView video;
@@ -86,6 +94,7 @@ public class Reproductor extends Activity {
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     setContentView(R.layout.reproductor);
     almacen = new Almacen(this);
+    actualizador = new Actualizador(this, "itatagroup/canales-tv", "canales-android", "Canales");
     video = findViewById(R.id.video);
     rotulo = findViewById(R.id.rotulo);
     rotuloNumero = findViewById(R.id.rotulo_numero);
@@ -127,6 +136,8 @@ public class Reproductor extends Activity {
       String cat = categorias.get(pos);
       if (cat.equals(ACCION_BUSCAR)) buscarCanales();
       else if (cat.equals(ACCION_ACERCA)) mostrarAcerca();
+      else if (cat.equals(ACCION_ACTUALIZAR)) buscarActualizacion();
+      else if (cat.equals(ACCION_LISTAS)) abrirMisListas();
       else if (!visibles.isEmpty()) listaCanales.requestFocus();
     });
     listaCanales.setOnItemClickListener((p, v, pos, id) -> {
@@ -174,6 +185,8 @@ public class Reproductor extends Activity {
   @Override
   protected void onStop() {
     handler.removeCallbacksAndMessages(null);
+    detenerServidor();
+    if (tarjeta.getVisibility() == View.VISIBLE && servidor == null) tarjeta.setVisibility(View.GONE);
     if (player != null) {
       player.release();
       player = null;
@@ -184,6 +197,7 @@ public class Reproductor extends Activity {
   @Override
   protected void onDestroy() {
     if (escaner != null) escaner.cancelar();
+    actualizador.cancelar();
     super.onDestroy();
   }
 
@@ -191,12 +205,15 @@ public class Reproductor extends Activity {
 
   private void cargar() {
     todos = almacen.canales();
+    todos.addAll(almacen.canalesDeListas());
     Collections.sort(todos, (a, b) -> Integer.compare(a.numero, b.numero));
     favoritos = almacen.favoritos();
     categorias.clear();
     categorias.add(FAVORITOS);
     for (String cat : Catalogo.CATEGORIAS) for (Canal c : todos) if (cat.equals(c.categoria)) { categorias.add(cat); break; }
     categorias.add(ACCION_BUSCAR);
+    categorias.add(ACCION_LISTAS);
+    categorias.add(ACCION_ACTUALIZAR);
     categorias.add(ACCION_ACERCA);
     adapterCategorias.notifyDataSetChanged();
 
@@ -227,7 +244,8 @@ public class Reproductor extends Activity {
       for (Canal c : todos) if (cat.equals(c.categoria)) visibles.add(c);
       listaVacia.setText("");
     }
-    boolean esAccion = cat.equals(ACCION_BUSCAR) || cat.equals(ACCION_ACERCA);
+    boolean esAccion = cat.equals(ACCION_BUSCAR) || cat.equals(ACCION_ACERCA) || cat.equals(ACCION_ACTUALIZAR)
+        || cat.equals(ACCION_LISTAS);
     listaVacia.setVisibility(visibles.isEmpty() && !esAccion ? View.VISIBLE : View.GONE);
     listaCanales.setFocusable(!visibles.isEmpty());
     adapterCanales.notifyDataSetChanged();
@@ -392,6 +410,81 @@ public class Reproductor extends Activity {
 
   private void cerrarTarjeta() {
     tarjeta.setVisibility(View.GONE);
+    detenerServidor();
+  }
+
+  private void detenerServidor() {
+    if (servidor != null) servidor.detener();
+    servidor = null;
+  }
+
+  // --- Mis listas: se administran desde el teléfono, en la red de la casa ---
+
+  private void abrirMisListas() {
+    detenerServidor();
+    String direccion = ServidorListas.direccion();
+    ServidorListas nuevo = new ServidorListas(new ServidorListas.Cambios() {
+      @Override
+      public void agregar(String nombre, String url) {
+        List<String[]> listas = almacen.listas();
+        for (String[] l : listas) if (l[1].equals(url)) return;
+        listas.add(new String[] {nombre, url});
+        almacen.guardarListas(listas);
+        recargarListas();
+      }
+
+      @Override
+      public void quitar(String url) {
+        List<String[]> listas = almacen.listas();
+        List<String[]> quedan = new ArrayList<>();
+        for (String[] l : listas) if (!l[1].equals(url)) quedan.add(l);
+        almacen.guardarListas(quedan);
+        recargarListas();
+      }
+
+      @Override
+      public List<String[]> listas() {
+        return almacen.listas();
+      }
+    });
+    String texto;
+    try {
+      if (direccion == null) throw new java.io.IOException("sin red local");
+      nuevo.iniciar();
+      texto = getString(R.string.listas_texto, direccion, nuevo.codigo);
+    } catch (java.io.IOException e) {
+      Log.w(TAG, "no se pudo abrir la página de listas", e);
+      mostrarTarjeta(getString(R.string.listas_titulo), getString(R.string.listas_sin_red), getString(R.string.cerrar), v -> cerrarTarjeta());
+      return;
+    }
+    mostrarTarjeta(getString(R.string.listas_titulo), texto + resumenListas(), getString(R.string.listo), v -> {
+      cerrarTarjeta();
+      if (!todos.isEmpty()) abrirPanel();
+    });
+    // Después de mostrarTarjeta (que cierra un servidor anterior), para que este quede abierto.
+    servidor = nuevo;
+  }
+
+  private String resumenListas() {
+    List<String[]> listas = almacen.listas();
+    if (listas.isEmpty()) return "\n\n" + getString(R.string.listas_ninguna);
+    StringBuilder sb = new StringBuilder("\n");
+    for (String[] l : listas) sb.append("\n• ").append(l[0]).append("  (").append(servidor(l[1])).append(")");
+    return sb.toString();
+  }
+
+  /** Vuelve a bajar todas las listas del usuario; sin filtro ni prueba: se muestran tal cual. */
+  private void recargarListas() {
+    List<String[]> listas = almacen.listas();
+    new Escaner(userAgent).cargarListas(listas, (canales, fallidas) -> {
+      almacen.guardarCanalesDeListas(canales);
+      cargar();
+      if (servidor != null && tarjeta.getVisibility() == View.VISIBLE) {
+        String estado = getString(R.string.listas_cargadas, canales.size())
+            + (fallidas > 0 ? " " + getString(R.string.listas_fallidas, fallidas) : "");
+        tarjetaTexto.setText(getString(R.string.listas_texto, ServidorListas.direccion(), servidor.codigo) + resumenListas() + "\n\n" + estado);
+      }
+    });
   }
 
   private void mostrarBienvenida() {
@@ -497,6 +590,75 @@ public class Reproductor extends Activity {
       public void fallo(String motivo) {
         escaner = null;
         mostrarTarjeta(getString(R.string.buscar), motivo, getString(R.string.buscar), v -> buscarCanales());
+      }
+    });
+  }
+
+  // --- actualización de la propia app: solo cuando se pulsa, nunca sola ---
+
+  private void buscarActualizacion() {
+    mostrarTarjeta(getString(R.string.accion_actualizar), getString(R.string.act_buscando), getString(R.string.cancelar), v -> {
+      actualizador.cancelar();
+      cerrarTarjeta();
+    });
+    actualizador.comprobar(MANIFIESTO, new Actualizador.AlComprobar() {
+      @Override
+      public void hayVersion(Actualizador.Oferta oferta) {
+        mostrarTarjeta(getString(R.string.act_hay, oferta.version),
+            oferta.notas.isEmpty() ? getString(R.string.act_sin_notas) : oferta.notas,
+            getString(R.string.act_actualizar), v -> actualizar(oferta));
+        segundoBoton(getString(R.string.act_ahora_no), v -> cerrarTarjeta());
+      }
+
+      @Override
+      public void alDia() {
+        mostrarTarjeta(getString(R.string.accion_actualizar), getString(R.string.act_al_dia, actualizador.versionNombre()),
+            getString(R.string.cerrar), v -> cerrarTarjeta());
+      }
+
+      @Override
+      public void fallo() {
+        // Sin detalles técnicos en pantalla: el motivo queda en adb logcat -s Actualizador.
+        mostrarTarjeta(getString(R.string.accion_actualizar), getString(R.string.act_fallo), getString(R.string.cerrar),
+            v -> cerrarTarjeta());
+      }
+    });
+  }
+
+  private void actualizar(Actualizador.Oferta oferta) {
+    if (!actualizador.puedeInstalar()) {
+      mostrarTarjeta(getString(R.string.act_permiso_titulo), getString(R.string.act_permiso), getString(R.string.act_abrir_ajuste),
+          v -> {
+            cerrarTarjeta();
+            if (!Actualizador.abrirPermisoDeInstalacion(this)) avisar(getString(R.string.act_sin_ajuste));
+          });
+      segundoBoton(getString(R.string.act_ahora_no), v -> cerrarTarjeta());
+      return;
+    }
+    mostrarTarjeta(getString(R.string.act_hay, oferta.version), getString(R.string.act_bajando, 0), getString(R.string.cancelar),
+        v -> {
+          actualizador.cancelar();
+          cerrarTarjeta();
+        });
+    tarjetaProgreso.setVisibility(View.VISIBLE);
+    tarjetaProgreso.setMax(100);
+    actualizador.descargarEInstalar(oferta, new Actualizador.AlDescargar() {
+      @Override
+      public void avance(int porcentaje) {
+        tarjetaProgreso.setProgress(porcentaje);
+        tarjetaTexto.setText(getString(R.string.act_bajando, porcentaje));
+      }
+
+      @Override
+      public void instalando() {
+        mostrarTarjeta(getString(R.string.act_hay, oferta.version), getString(R.string.act_instalando), getString(R.string.cerrar),
+            v -> cerrarTarjeta());
+      }
+
+      @Override
+      public void fallo() {
+        mostrarTarjeta(getString(R.string.accion_actualizar), getString(R.string.act_fallo), getString(R.string.cerrar),
+            v -> cerrarTarjeta());
       }
     });
   }

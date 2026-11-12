@@ -92,6 +92,28 @@ public final class Escaner {
     }, "buscar-canales").start();
   }
 
+  public interface AlCargarListas {
+    void listo(List<Canal> canales, int fallidas);
+  }
+
+  /** Baja las listas del usuario (sin filtrar ni probar) en un hilo aparte. */
+  public void cargarListas(List<String[]> listas, AlCargarListas oyente) {
+    new Thread(() -> {
+      List<Canal> canales = new ArrayList<>();
+      int fallidas = 0;
+      for (String[] l : listas) {
+        try {
+          canales.addAll(Catalogo.deListaPropia(bajarLista(l[1]), l[0]));
+        } catch (IOException | RuntimeException e) {
+          Log.w(TAG, "no se pudo cargar la lista " + l[0], e);
+          fallidas++;
+        }
+      }
+      int f = fallidas;
+      principal.post(() -> oyente.listo(canales, f));
+    }, "mis-listas").start();
+  }
+
   /** Un mismo canal puede venir en dos listas o en dos calidades: queda el primero. */
   static List<Canal> sinRepetidos(List<Canal> canales) {
     Map<String, Canal> porNombre = new LinkedHashMap<>();

@@ -24,14 +24,51 @@ import java.util.Set;
 public final class Almacen {
   private static final String TAG = "Canales";
   private final File archivo;
+  private final File archivoListas;
   private final SharedPreferences prefs;
 
   public Almacen(Context ctx) {
     archivo = new File(ctx.getFilesDir(), "canales.json");
+    archivoListas = new File(ctx.getFilesDir(), "mis-listas.json");
     prefs = ctx.getSharedPreferences("canales", Context.MODE_PRIVATE);
   }
 
   public List<Canal> canales() {
+    return leer(archivo);
+  }
+
+  /** Canales de «Mis listas», tal como vienen en las listas del usuario. */
+  public List<Canal> canalesDeListas() {
+    return leer(archivoListas);
+  }
+
+  /** Mis listas empiezan en el 1000, para no chocar con los números de la búsqueda. */
+  public void guardarCanalesDeListas(List<Canal> canales) {
+    for (int i = 0; i < canales.size(); i++) canales.get(i).numero = 1000 + i;
+    escribir(archivoListas, canales);
+  }
+
+  /** Listas del usuario: pares {nombre, url}, en el orden en que se agregaron. */
+  public List<String[]> listas() {
+    List<String[]> listas = new ArrayList<>();
+    try {
+      JSONArray arr = new JSONArray(prefs.getString("listas", "[]"));
+      for (int i = 0; i < arr.length(); i++) {
+        listas.add(new String[] {arr.getJSONArray(i).getString(0), arr.getJSONArray(i).getString(1)});
+      }
+    } catch (JSONException e) {
+      Log.w(TAG, "listas ilegibles", e);
+    }
+    return listas;
+  }
+
+  public void guardarListas(List<String[]> listas) {
+    JSONArray arr = new JSONArray();
+    for (String[] l : listas) arr.put(new JSONArray().put(l[0]).put(l[1]));
+    prefs.edit().putString("listas", arr.toString()).apply();
+  }
+
+  private List<Canal> leer(File archivo) {
     List<Canal> lista = new ArrayList<>();
     if (!archivo.exists()) return lista;
     try (FileInputStream in = new FileInputStream(archivo)) {
@@ -45,7 +82,7 @@ public final class Almacen {
       JSONArray arr = new JSONArray(new String(datos, 0, leidos, StandardCharsets.UTF_8));
       for (int i = 0; i < arr.length(); i++) lista.add(Canal.desde(arr.getJSONObject(i)));
     } catch (IOException | JSONException e) {
-      Log.w(TAG, "no se pudo leer canales.json", e);
+      Log.w(TAG, "no se pudo leer " + archivo.getName(), e);
     }
     return lista;
   }
@@ -64,18 +101,22 @@ public final class Almacen {
       if (c.numero == 0) c.numero = siguiente++;
       resultado.add(c);
     }
+    escribir(archivo, resultado);
+    return resultado;
+  }
+
+  private static void escribir(File archivo, List<Canal> canales) {
     try {
       JSONArray arr = new JSONArray();
-      for (Canal c : resultado) arr.put(c.json());
+      for (Canal c : canales) arr.put(c.json());
       File tmp = new File(archivo.getPath() + ".tmp");
       try (FileOutputStream out = new FileOutputStream(tmp)) {
         out.write(arr.toString().getBytes(StandardCharsets.UTF_8));
       }
-      if (!tmp.renameTo(archivo)) throw new IOException("no se pudo reemplazar canales.json");
+      if (!tmp.renameTo(archivo)) throw new IOException("no se pudo reemplazar " + archivo.getName());
     } catch (IOException | JSONException e) {
-      Log.w(TAG, "no se pudo guardar canales.json", e);
+      Log.w(TAG, "no se pudo guardar " + archivo.getName(), e);
     }
-    return resultado;
   }
 
   /** Primero las categorías en el orden de la grilla, para que la primera búsqueda numere 1, 2, 3… así. */

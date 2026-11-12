@@ -30,7 +30,8 @@ public final class Catalogo {
   public static final String NOTICIAS = "Noticias";
   public static final String MUSICA = "Música y radios";
   public static final String INTERNACIONAL = "Internacional";
-  public static final String[] CATEGORIAS = {NACIONALES, REGIONALES, NOTICIAS, MUSICA, INTERNACIONAL};
+  public static final String MIS_LISTAS = "Mis listas";
+  public static final String[] CATEGORIAS = {NACIONALES, REGIONALES, NOTICIAS, MUSICA, INTERNACIONAL, MIS_LISTAS};
 
   /** Señales de cable o de pago. Se comparan contra el nombre del canal. */
   static final Pattern PAGO = Pattern.compile(
@@ -65,6 +66,21 @@ public final class Catalogo {
 
   private static final Pattern ATRIBUTO = Pattern.compile("([a-z-]+)=\"([^\"]*)\"");
   private static final Pattern CALIDAD = Pattern.compile("\\((\\d{3,4}[pi])\\)");
+
+  /**
+   * Canales de una lista que agregó el usuario: tal cual, sin ningún filtro ni prueba. Lo que
+   * contienen es responsabilidad de quien la agrega; la app solo los muestra aparte.
+   */
+  public static List<Canal> deListaPropia(List<Entrada> entradas, String nombreLista) {
+    List<Canal> canales = new ArrayList<>();
+    for (Entrada e : entradas) {
+      String nombre = limpiar(e.nombre);
+      if (nombre.isEmpty()) nombre = e.url;
+      Matcher q = CALIDAD.matcher(e.nombre);
+      canales.add(new Canal("lista:" + nombreLista + ":" + e.url, nombre, MIS_LISTAS, e.url, q.find() ? q.group(1) : "", false, nombreLista));
+    }
+    return canales;
+  }
 
   /** Una entrada cruda de la lista, antes de filtrar. */
   public static final class Entrada {
