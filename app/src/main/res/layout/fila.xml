@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="@dimen/alto_fila"
+    android:orientation="horizontal" android:gravity="center_vertical"
+    android:paddingStart="14dp" android:paddingEnd="14dp">
+  <TextView android:id="@+id/numero" android:layout_width="48dp" android:layout_height="wrap_content"
+      android:textColor="@color/texto_fila" android:textSize="@dimen/texto_fila" android:fontFeatureSettings="tnum"
+      android:duplicateParentState="true"/>
+  <TextView android:id="@+id/nombre" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+      android:textColor="@color/texto_fila" android:textSize="@dimen/texto_fila" android:singleLine="true"
+      android:ellipsize="end" android:duplicateParentState="true"/>
+  <TextView android:id="@+id/marca" android:layout_width="wrap_content" android:layout_height="wrap_content"
+      android:textColor="@color/texto_fila" android:textSize="@dimen/texto_fila" android:duplicateParentState="true"/>
+</LinearLayout>

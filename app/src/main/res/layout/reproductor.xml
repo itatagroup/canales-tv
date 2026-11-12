@@ -1,14 +1,89 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="match_parent" android:background="#000000">
+    android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/fondo">
+
   <SurfaceView android:id="@+id/video" android:layout_width="match_parent" android:layout_height="match_parent"
-      android:layout_gravity="center"/>
+      android:layout_gravity="center" android:focusable="false"/>
+
+  <!-- Rótulo del canal: abajo a la izquierda, dentro del margen de seguridad. -->
   <LinearLayout android:id="@+id/rotulo" android:layout_width="wrap_content" android:layout_height="wrap_content"
-      android:layout_gravity="top|start" android:layout_margin="32dp" android:orientation="vertical"
-      android:background="#CC22251E" android:padding="16dp">
-    <TextView android:id="@+id/nombre" android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold"/>
-    <TextView android:id="@+id/estado" android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:textColor="#D9DCCF" android:textSize="16sp"/>
+      android:layout_gravity="bottom|start" android:layout_marginStart="@dimen/seguro_h"
+      android:layout_marginBottom="@dimen/seguro_v" android:orientation="horizontal" android:gravity="center_vertical"
+      android:background="@drawable/tarjeta" android:paddingStart="20dp" android:paddingEnd="24dp"
+      android:paddingTop="14dp" android:paddingBottom="14dp" android:visibility="gone">
+    <TextView android:id="@+id/rotulo_numero" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:textColor="@color/foco" android:textSize="@dimen/texto_numero_grande" android:textStyle="bold"
+        android:fontFeatureSettings="tnum" android:layout_marginEnd="20dp"/>
+    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical">
+      <TextView android:id="@+id/rotulo_nombre" android:layout_width="wrap_content" android:layout_height="wrap_content"
+          android:textColor="@color/texto" android:textSize="@dimen/texto_titulo" android:textStyle="bold"
+          android:maxWidth="720dp" android:singleLine="true" android:ellipsize="end"/>
+      <TextView android:id="@+id/rotulo_estado" android:layout_width="wrap_content" android:layout_height="wrap_content"
+          android:textColor="@color/texto_secundario" android:textSize="@dimen/texto_ayuda" android:maxWidth="720dp"/>
+    </LinearLayout>
+  </LinearLayout>
+
+  <!-- Número que se va tecleando con el control. -->
+  <TextView android:id="@+id/tecleado" android:layout_width="wrap_content" android:layout_height="wrap_content"
+      android:layout_gravity="top|end" android:layout_marginEnd="@dimen/seguro_h" android:layout_marginTop="@dimen/seguro_v"
+      android:background="@drawable/tarjeta" android:paddingStart="24dp" android:paddingEnd="24dp" android:paddingTop="8dp"
+      android:paddingBottom="8dp" android:textColor="@color/foco" android:textSize="@dimen/texto_numero_grande"
+      android:textStyle="bold" android:fontFeatureSettings="tnum" android:visibility="gone"/>
+
+  <!-- Lista lateral: categorías | canales. -->
+  <LinearLayout android:id="@+id/panel" android:layout_width="wrap_content" android:layout_height="match_parent"
+      android:layout_gravity="start" android:orientation="vertical" android:background="@color/panel"
+      android:paddingStart="@dimen/seguro_h" android:paddingEnd="20dp" android:paddingTop="@dimen/seguro_v"
+      android:paddingBottom="@dimen/seguro_v" android:visibility="gone">
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/titulo_panel"
+        android:textColor="@color/texto" android:textSize="@dimen/texto_titulo" android:textStyle="bold"
+        android:layout_marginBottom="8dp" android:paddingStart="14dp"/>
+    <LinearLayout android:layout_width="wrap_content" android:layout_height="0dp" android:layout_weight="1"
+        android:orientation="horizontal">
+      <ListView android:id="@+id/categorias" android:layout_width="@dimen/ancho_categorias" android:layout_height="match_parent"
+          android:divider="@null" android:dividerHeight="2dp" android:listSelector="@drawable/fila"
+          android:drawSelectorOnTop="false" android:choiceMode="singleChoice" android:nextFocusRight="@+id/lista_canales"/>
+      <View android:layout_width="1dp" android:layout_height="match_parent" android:background="@color/panel_borde"
+          android:layout_marginStart="12dp" android:layout_marginEnd="12dp"/>
+      <FrameLayout android:layout_width="@dimen/ancho_canales" android:layout_height="match_parent">
+        <ListView android:id="@+id/lista_canales" android:layout_width="match_parent" android:layout_height="match_parent"
+            android:divider="@null" android:dividerHeight="2dp" android:listSelector="@drawable/fila"
+            android:nextFocusLeft="@id/categorias"/>
+        <TextView android:id="@+id/lista_vacia" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textColor="@color/texto_secundario" android:textSize="@dimen/texto_ayuda" android:padding="14dp"
+            android:visibility="gone"/>
+      </FrameLayout>
+    </LinearLayout>
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ayuda_panel"
+        android:textColor="@color/texto_secundario" android:textSize="@dimen/texto_ayuda" android:layout_marginTop="12dp"
+        android:paddingStart="14dp"/>
+  </LinearLayout>
+
+  <!-- Tarjeta central: bienvenida, búsqueda en curso y «Qué hace esta app». -->
+  <LinearLayout android:id="@+id/tarjeta" android:layout_width="880dp" android:layout_height="wrap_content"
+      android:layout_gravity="center" android:orientation="vertical" android:background="@drawable/tarjeta"
+      android:padding="36dp" android:visibility="gone">
+    <TextView android:id="@+id/tarjeta_titulo" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:textColor="@color/texto" android:textSize="@dimen/texto_titulo" android:textStyle="bold"/>
+    <ScrollView android:id="@+id/tarjeta_scroll" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:focusable="true" android:scrollbarThumbVertical="@color/texto_secundario">
+      <TextView android:id="@+id/tarjeta_texto" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:textColor="@color/texto_secundario" android:textSize="@dimen/texto_fila" android:paddingTop="16dp"
+        android:lineSpacingMultiplier="1.25"/>
+    </ScrollView>
+    <ProgressBar android:id="@+id/tarjeta_progreso" style="@android:style/Widget.Material.ProgressBar.Horizontal"
+        android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp"
+        android:progressTint="@color/foco" android:visibility="gone"/>
+    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal"
+        android:layout_marginTop="28dp">
+      <Button android:id="@+id/tarjeta_boton" android:layout_width="wrap_content" android:layout_height="wrap_content"
+          android:background="@drawable/boton" android:textColor="@color/texto_fila"
+          android:textSize="@dimen/texto_fila" android:textAllCaps="false" android:paddingStart="28dp" android:paddingEnd="28dp"
+          android:minHeight="56dp"/>
+      <Button android:id="@+id/tarjeta_boton2" android:layout_width="wrap_content" android:layout_height="wrap_content"
+          android:layout_marginStart="16dp" android:background="@drawable/boton" android:textColor="@color/texto_fila"
+          android:textSize="@dimen/texto_fila" android:textAllCaps="false" android:paddingStart="28dp" android:paddingEnd="28dp"
+          android:minHeight="56dp" android:visibility="gone"/>
+    </LinearLayout>
   </LinearLayout>
 </FrameLayout>

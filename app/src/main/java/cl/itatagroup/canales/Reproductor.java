@@ -8,9 +8,16 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.AdapterView;
+import android.widget.BaseAdapter;
+import android.widget.Button;
+import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.media3.common.MediaItem;
@@ -21,42 +28,81 @@ import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+
 /**
- * Reproductor a pantalla completa (H0): tres canales de prueba fijos, se cambia con ↑ ↓.
- * Mide cuánto tarda cada canal en mostrar la primera imagen y lo deja en el rótulo y en
- * {@code adb logcat -s Canales}. La grilla, el escaneo y las listas llegan en los hitos siguientes.
+ * La app entera es esta pantalla: el canal a pantalla completa y, encima, la lista lateral, el
+ * rótulo y la tarjeta central (bienvenida, búsqueda, «Qué hace esta app»).
+ *
+ * <p>Control remoto: ↑ ↓ canal anterior y siguiente · números: ir a ese canal · OK o ←: lista ·
+ * Atrás: volver al canal que viste antes (o salir si no hay).
  */
 public class Reproductor extends Activity {
   private static final String TAG = "Canales";
+  private static final long ROTULO_MS = 3500;
+  private static final long TECLEO_MS = 1500;
 
-  /** Canales de prueba: enlaces de la CDN que usan los propios canales (dps.live). */
-  private static final String[][] CANALES = {
-    {"T13 En Vivo", "https://redirector.dps.live/hls/t13/playlist.m3u8"},
-    {"UCV TV", "https://unlimited2-cl-isp.dps.live/ucvtv2/ucvtv2.smil/playlist.m3u8"},
-    {"TV+", "https://jireh-8-hls-video-us-isp.dps.live/hls-video/ey6283je82983je9823je8jowowiekldk9838274/tvmas/tvmas.smil/playlist.m3u8"},
-  };
+  /** Filas de la columna de categorías: las de canales y, al final, las acciones. */
+  private static final String FAVORITOS = "★ Favoritos";
+  private static final String ACCION_BUSCAR = "Buscar canales";
+  private static final String ACCION_ACERCA = "Qué hace esta app";
 
   private final Handler handler = new Handler(Looper.getMainLooper());
   private final Runnable ocultarRotulo = () -> this.rotulo.setVisibility(View.GONE);
+  private final Runnable irATecleado = this::irATecleado;
 
+  private Almacen almacen;
   private ExoPlayer player;
-  private SurfaceView video;
-  private View rotulo;
-  private TextView nombre;
-  private TextView estado;
-  private int actual = 0;
-  private long inicio;
+  private Escaner escaner;
   private String userAgent;
+
+  private SurfaceView video;
+  private View rotulo, panel, tarjeta;
+  private TextView rotuloNumero, rotuloNombre, rotuloEstado, tecleado, listaVacia;
+  private TextView tarjetaTitulo, tarjetaTexto;
+  private ProgressBar tarjetaProgreso;
+  private Button tarjetaBoton, tarjetaBoton2;
+  private ListView listaCategorias, listaCanales;
+
+  /** Todos los canales, ordenados por número (el orden del zapping). */
+  private List<Canal> todos = new ArrayList<>();
+  private final List<String> categorias = new ArrayList<>();
+  private final List<Canal> visibles = new ArrayList<>();
+  private final FilasAdapter adapterCategorias = new FilasAdapter(true);
+  private final FilasAdapter adapterCanales = new FilasAdapter(false);
+  private Set<String> favoritos;
+
+  private Canal actual, anterior;
+  private long inicio;
+  private boolean conError;
+  private String numeroTecleado = "";
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     setContentView(R.layout.reproductor);
+    almacen = new Almacen(this);
     video = findViewById(R.id.video);
     rotulo = findViewById(R.id.rotulo);
-    nombre = findViewById(R.id.nombre);
-    estado = findViewById(R.id.estado);
+    rotuloNumero = findViewById(R.id.rotulo_numero);
+    rotuloNombre = findViewById(R.id.rotulo_nombre);
+    rotuloEstado = findViewById(R.id.rotulo_estado);
+    tecleado = findViewById(R.id.tecleado);
+    panel = findViewById(R.id.panel);
+    listaVacia = findViewById(R.id.lista_vacia);
+    tarjeta = findViewById(R.id.tarjeta);
+    tarjetaTitulo = findViewById(R.id.tarjeta_titulo);
+    tarjetaTexto = findViewById(R.id.tarjeta_texto);
+    tarjetaProgreso = findViewById(R.id.tarjeta_progreso);
+    tarjetaBoton = findViewById(R.id.tarjeta_boton);
+    tarjetaBoton2 = findViewById(R.id.tarjeta_boton2);
+    listaCategorias = findViewById(R.id.categorias);
+    listaCanales = findViewById(R.id.lista_canales);
+
     String version = "?";
     try {
       version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
@@ -64,6 +110,39 @@ public class Reproductor extends Activity {
       Log.w(TAG, "sin versión", e);
     }
     userAgent = "Canales/" + version;
+
+    listaCategorias.setAdapter(adapterCategorias);
+    listaCanales.setAdapter(adapterCanales);
+    // Al moverse por las categorías, la columna de canales cambia en el acto (sin apretar OK).
+    listaCategorias.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+      @Override
+      public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
+        mostrarCategoria(pos);
+      }
+
+      @Override
+      public void onNothingSelected(AdapterView<?> parent) {}
+    });
+    listaCategorias.setOnItemClickListener((p, v, pos, id) -> {
+      String cat = categorias.get(pos);
+      if (cat.equals(ACCION_BUSCAR)) buscarCanales();
+      else if (cat.equals(ACCION_ACERCA)) mostrarAcerca();
+      else if (!visibles.isEmpty()) listaCanales.requestFocus();
+    });
+    listaCanales.setOnItemClickListener((p, v, pos, id) -> {
+      sintonizar(visibles.get(pos));
+      cerrarPanel();
+    });
+    listaCanales.setOnItemLongClickListener((p, v, pos, id) -> {
+      Canal c = visibles.get(pos);
+      almacen.alternarFavorito(c.id);
+      favoritos = almacen.favoritos();
+      avisar(getString(favoritos.contains(c.id) ? R.string.favorito_si : R.string.favorito_no, c.nombre));
+      adapterCanales.notifyDataSetChanged();
+      return true;
+    });
+
+    cargar();
   }
 
   @Override
@@ -74,27 +153,27 @@ public class Reproductor extends Activity {
     player.addListener(new Player.Listener() {
       @Override
       public void onRenderedFirstFrame() {
-        long ms = SystemClock.elapsedRealtime() - inicio;
-        Log.i(TAG, CANALES[actual][0] + ": primera imagen en " + ms + " ms");
-        estado.setText(ms + " ms · " + getString(R.string.ayuda));
-        handler.removeCallbacks(ocultarRotulo);
-        handler.postDelayed(ocultarRotulo, 4000);
+        Log.i(TAG, (actual != null ? actual.nombre : "?") + ": primera imagen en " + (SystemClock.elapsedRealtime() - inicio) + " ms");
+        conError = false;
+        if (actual != null) rotuloEstado.setText(actual.noSiempre ? getString(R.string.no_siempre) : "");
+        programarOcultarRotulo();
       }
 
       @Override
       public void onPlayerError(PlaybackException error) {
-        Log.w(TAG, CANALES[actual][0] + ": " + error.getErrorCodeName(), error);
+        Log.w(TAG, (actual != null ? actual.nombre : "?") + ": " + error.getErrorCodeName(), error);
+        conError = true;
         handler.removeCallbacks(ocultarRotulo);
         rotulo.setVisibility(View.VISIBLE);
-        estado.setText(getString(R.string.sin_senal) + " (" + error.getErrorCodeName() + ")");
+        rotuloEstado.setText(R.string.sin_senal);
       }
     });
-    sintonizar(actual);
+    if (actual != null) reproducir(actual);
   }
 
   @Override
   protected void onStop() {
-    handler.removeCallbacks(ocultarRotulo);
+    handler.removeCallbacksAndMessages(null);
     if (player != null) {
       player.release();
       player = null;
@@ -103,44 +182,436 @@ public class Reproductor extends Activity {
   }
 
   @Override
+  protected void onDestroy() {
+    if (escaner != null) escaner.cancelar();
+    super.onDestroy();
+  }
+
+  // --- datos ---
+
+  private void cargar() {
+    todos = almacen.canales();
+    Collections.sort(todos, (a, b) -> Integer.compare(a.numero, b.numero));
+    favoritos = almacen.favoritos();
+    categorias.clear();
+    categorias.add(FAVORITOS);
+    for (String cat : Catalogo.CATEGORIAS) for (Canal c : todos) if (cat.equals(c.categoria)) { categorias.add(cat); break; }
+    categorias.add(ACCION_BUSCAR);
+    categorias.add(ACCION_ACERCA);
+    adapterCategorias.notifyDataSetChanged();
+
+    if (todos.isEmpty()) {
+      mostrarBienvenida();
+      return;
+    }
+    String ultimo = almacen.ultimo();
+    Canal elegido = null;
+    for (Canal c : todos) {
+      if (c.url.startsWith(Catalogo.APP)) continue; // se abre aparte, no se reproduce aquí
+      if (elegido == null || c.id.equals(ultimo)) elegido = c;
+    }
+    if (elegido == null) return;
+    if (actual == null || !todos.contains(actual)) {
+      actual = elegido;
+      if (player != null) reproducir(actual);
+    }
+  }
+
+  private void mostrarCategoria(int pos) {
+    visibles.clear();
+    String cat = categorias.get(pos);
+    if (cat.equals(FAVORITOS)) {
+      for (Canal c : todos) if (favoritos.contains(c.id)) visibles.add(c);
+      listaVacia.setText(R.string.sin_favoritos);
+    } else {
+      for (Canal c : todos) if (cat.equals(c.categoria)) visibles.add(c);
+      listaVacia.setText("");
+    }
+    boolean esAccion = cat.equals(ACCION_BUSCAR) || cat.equals(ACCION_ACERCA);
+    listaVacia.setVisibility(visibles.isEmpty() && !esAccion ? View.VISIBLE : View.GONE);
+    listaCanales.setFocusable(!visibles.isEmpty());
+    adapterCanales.notifyDataSetChanged();
+    int i = visibles.indexOf(actual);
+    listaCanales.setSelection(Math.max(i, 0));
+  }
+
+  // --- reproducción ---
+
+  private void sintonizar(Canal c) {
+    if (c == null) return;
+    if (c.url.startsWith(Catalogo.APP)) {
+      abrirAppOficial(c);
+      return;
+    }
+    if (actual != null && !actual.id.equals(c.id)) anterior = actual;
+    actual = c;
+    almacen.recordar(c.id);
+    reproducir(c);
+  }
+
+  private void reproducir(Canal c) {
+    if (player == null) return;
+    conError = false;
+    mostrarRotulo(c, getString(R.string.cargando));
+    // User-Agent honesto: dice qué app es y su versión, nada del equipo ni del usuario.
+    DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
+        .setUserAgent(userAgent)
+        .setAllowCrossProtocolRedirects(true);
+    MediaItem item = new MediaItem.Builder().setUri(Uri.parse(c.url)).setMimeType(MimeTypes.APPLICATION_M3U8).build();
+    inicio = SystemClock.elapsedRealtime();
+    player.setMediaSource(new HlsMediaSource.Factory(http).createMediaSource(item));
+    player.prepare();
+    player.setPlayWhenReady(true);
+  }
+
+  /**
+   * TVN, Canal 13 y Chilevisión no publican un enlace abierto: se busca su app oficial en la tienda
+   * del equipo (si ya está instalada, la tienda ofrece «Abrir»). La app no adivina enlaces.
+   */
+  private void abrirAppOficial(Canal c) {
+    String busqueda = c.url.substring(Catalogo.APP.length());
+    try {
+      startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+          Uri.parse("market://search?q=" + Uri.encode(busqueda))));
+    } catch (android.content.ActivityNotFoundException e) {
+      avisar(getString(R.string.sin_tienda, c.nombre));
+    }
+  }
+
+  /** ↑ ↓ pasan por los canales que se ven aquí; los que abren otra app se saltan. */
+  private void zapping(int paso) {
+    int n = todos.size();
+    int i = actual == null ? (paso > 0 ? -1 : 0) : todos.indexOf(actual);
+    for (int intento = 0; intento < n; intento++) {
+      i = ((i + paso) % n + n) % n;
+      Canal c = todos.get(i);
+      if (!c.url.startsWith(Catalogo.APP)) {
+        sintonizar(c);
+        return;
+      }
+    }
+  }
+
+  // --- rótulo y avisos ---
+
+  private void mostrarRotulo(Canal c, String estado) {
+    handler.removeCallbacks(ocultarRotulo);
+    rotuloNumero.setText(String.valueOf(c.numero));
+    rotuloNombre.setText(favoritos.contains(c.id) ? "★ " + c.nombre : c.nombre);
+    rotuloEstado.setText(estado);
+    rotulo.setVisibility(View.VISIBLE);
+  }
+
+  private void programarOcultarRotulo() {
+    handler.removeCallbacks(ocultarRotulo);
+    if (!conError) handler.postDelayed(ocultarRotulo, ROTULO_MS);
+  }
+
+  /** Un aviso corto en el rótulo, sin tapar el video. */
+  private void avisar(String texto) {
+    handler.removeCallbacks(ocultarRotulo);
+    rotuloNumero.setText("");
+    rotuloNombre.setText(texto);
+    rotuloEstado.setText("");
+    rotulo.setVisibility(View.VISIBLE);
+    handler.postDelayed(ocultarRotulo, ROTULO_MS);
+  }
+
+  // --- números del control ---
+
+  private void teclear(int digito) {
+    if (numeroTecleado.length() >= 3) numeroTecleado = "";
+    numeroTecleado += digito;
+    tecleado.setText(numeroTecleado);
+    tecleado.setVisibility(View.VISIBLE);
+    handler.removeCallbacks(irATecleado);
+    handler.postDelayed(irATecleado, TECLEO_MS);
+  }
+
+  private void irATecleado() {
+    tecleado.setVisibility(View.GONE);
+    if (numeroTecleado.isEmpty()) return;
+    int n = Integer.parseInt(numeroTecleado);
+    numeroTecleado = "";
+    for (Canal c : todos) {
+      if (c.numero == n) {
+        sintonizar(c);
+        return;
+      }
+    }
+    avisar(getString(R.string.canal_no_existe, n));
+  }
+
+  // --- panel ---
+
+  private void abrirPanel() {
+    if (categorias.isEmpty()) return;
+    panel.setVisibility(View.VISIBLE);
+    rotulo.setVisibility(View.GONE);
+    // Abre en la categoría del canal que se está viendo, con ese canal enfocado.
+    int pos = actual == null ? 0 : Math.max(categorias.indexOf(actual.categoria), 0);
+    listaCategorias.setItemChecked(pos, true);
+    listaCategorias.setSelection(pos);
+    mostrarCategoria(pos);
+    if (!visibles.isEmpty()) listaCanales.requestFocus();
+    else listaCategorias.requestFocus();
+  }
+
+  private void cerrarPanel() {
+    panel.setVisibility(View.GONE);
+    video.requestFocus();
+  }
+
+  // --- tarjeta central ---
+
+  private void mostrarTarjeta(String titulo, String texto, String boton, View.OnClickListener alPulsar) {
+    cerrarPanel();
+    tarjetaTitulo.setText(titulo);
+    tarjetaTexto.setText(texto);
+    tarjetaProgreso.setVisibility(View.GONE);
+    tarjetaBoton2.setVisibility(View.GONE);
+    tarjetaBoton.setText(boton);
+    tarjetaBoton.setOnClickListener(alPulsar);
+    tarjeta.setVisibility(View.VISIBLE);
+    tarjetaBoton.requestFocus();
+    // Un texto largo (la lista de excluidos) no empuja los botones fuera de la pantalla: se recorre
+    // con ↑ desde los botones.
+    View scroll = findViewById(R.id.tarjeta_scroll);
+    scroll.scrollTo(0, 0);
+    ViewGroup.LayoutParams lp = scroll.getLayoutParams();
+    lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+    scroll.setLayoutParams(lp);
+    scroll.post(() -> {
+      int max = getWindow().getDecorView().getHeight() / 2;
+      if (scroll.getHeight() > max) {
+        lp.height = max;
+        scroll.setLayoutParams(lp);
+      }
+    });
+  }
+
+  private void cerrarTarjeta() {
+    tarjeta.setVisibility(View.GONE);
+  }
+
+  private void mostrarBienvenida() {
+    mostrarTarjeta(getString(R.string.bienvenida_titulo), getString(R.string.bienvenida_texto), getString(R.string.buscar),
+        v -> buscarCanales());
+  }
+
+  private void mostrarAcerca() {
+    // Las fuentes van primero: son lo que cualquiera puede abrir para verificar.
+    String texto = getString(R.string.fuentes, String.join("  ·  ", Escaner.FUENTES)) + "\n\n" + getString(R.string.acerca_texto);
+    mostrarTarjeta(getString(R.string.acerca), texto, getString(R.string.cerrar), v -> cerrarTarjeta());
+    segundoBoton(getString(R.string.fuera_titulo), v -> mostrarFuera());
+  }
+
+  private void mostrarFuera() {
+    String texto = almacen.fuera();
+    mostrarTarjeta(getString(R.string.fuera_titulo), texto.isEmpty() ? getString(R.string.fuera_nada) : texto,
+        getString(R.string.ver_canales), v -> {
+          cerrarTarjeta();
+          if (!todos.isEmpty()) abrirPanel();
+        });
+  }
+
+  /** «Canales de pago: Disney, ESPN… / No vienen del propio canal: Mega (desde vtrplay.com)…». */
+  private String textoFuera(List<Catalogo.Excluido> fuera) {
+    List<String> pago = new ArrayList<>();
+    List<String> origen = new ArrayList<>();
+    for (Catalogo.Excluido x : fuera) {
+      if (x.motivo.equals(Catalogo.MOTIVO_PAGO)) pago.add(x.nombre);
+      else origen.add(x.nombre + " (" + servidor(x.url) + ")");
+    }
+    StringBuilder sb = new StringBuilder();
+    if (!pago.isEmpty()) sb.append(getString(R.string.fuera_pago, String.join(", ", pago)));
+    if (!origen.isEmpty()) {
+      if (sb.length() > 0) sb.append("\n\n");
+      sb.append(getString(R.string.fuera_origen, String.join(", ", origen)));
+    }
+    return sb.toString();
+  }
+
+  /** El servidor de un enlace, para mostrar de dónde viene una señal. */
+  static String servidor(String url) {
+    try {
+      String host = Uri.parse(url).getHost();
+      return host == null ? url : host;
+    } catch (RuntimeException e) {
+      return url;
+    }
+  }
+
+  private void segundoBoton(String texto, View.OnClickListener alPulsar) {
+    tarjetaBoton2.setText(texto);
+    tarjetaBoton2.setOnClickListener(alPulsar);
+    tarjetaBoton2.setVisibility(View.VISIBLE);
+  }
+
+  private void buscarCanales() {
+    if (escaner != null) return;
+    mostrarTarjeta(getString(R.string.buscando), "", getString(R.string.cancelar), v -> cancelarBusqueda());
+    tarjetaProgreso.setVisibility(View.VISIBLE);
+    tarjetaProgreso.setProgress(0);
+    escaner = new Escaner(userAgent);
+    long t0 = SystemClock.elapsedRealtime();
+    escaner.buscar(new Escaner.Avance() {
+      @Override
+      public void probando(int hechos, int total, int vivos) {
+        tarjetaProgreso.setMax(total);
+        tarjetaProgreso.setProgress(hechos);
+        tarjetaTexto.setText(getString(R.string.probando, hechos, total, vivos));
+      }
+
+      @Override
+      public void listo(List<Canal> vivos, List<Catalogo.Excluido> fuera) {
+        escaner = null;
+        Log.i(TAG, "búsqueda: " + vivos.size() + " canales, " + fuera.size() + " fuera, en "
+            + (SystemClock.elapsedRealtime() - t0) + " ms");
+        almacen.guardarFuera(textoFuera(fuera));
+        if (vivos.isEmpty()) {
+          mostrarTarjeta(getString(R.string.buscar), getString(R.string.ninguno), getString(R.string.buscar), v -> buscarCanales());
+          return;
+        }
+        almacen.guardar(vivos);
+        cargar();
+        int pago = 0;
+        for (Catalogo.Excluido x : fuera) if (x.motivo.equals(Catalogo.MOTIVO_PAGO)) pago++;
+        int origen = fuera.size() - pago;
+        if (fuera.isEmpty()) {
+          cerrarTarjeta();
+          avisar(getString(R.string.encontrados, vivos.size()));
+          abrirPanel();
+          return;
+        }
+        // Se dice siempre qué quedó fuera y se ofrece verlo: nada se esconde.
+        mostrarTarjeta(getString(R.string.resultado_titulo, vivos.size()), getString(R.string.resultado_texto, pago, origen),
+            getString(R.string.ver_canales), v -> {
+              cerrarTarjeta();
+              abrirPanel();
+            });
+        segundoBoton(getString(R.string.ver_cuales), v -> mostrarFuera());
+      }
+
+      @Override
+      public void fallo(String motivo) {
+        escaner = null;
+        mostrarTarjeta(getString(R.string.buscar), motivo, getString(R.string.buscar), v -> buscarCanales());
+      }
+    });
+  }
+
+  private void cancelarBusqueda() {
+    if (escaner != null) escaner.cancelar();
+    escaner = null;
+    cerrarTarjeta();
+    if (todos.isEmpty()) mostrarBienvenida();
+  }
+
+  // --- teclas ---
+
+  @Override
+  public void onBackPressed() {
+    if (tarjeta.getVisibility() == View.VISIBLE) {
+      if (escaner != null) cancelarBusqueda();
+      else if (todos.isEmpty()) super.onBackPressed();
+      else cerrarTarjeta();
+    } else if (panel.getVisibility() == View.VISIBLE) {
+      cerrarPanel();
+    } else if (anterior != null && todos.contains(anterior)) {
+      sintonizar(anterior); // como en una tele: Atrás vuelve al canal de antes
+    } else {
+      super.onBackPressed();
+    }
+  }
+
+  @Override
   public boolean onKeyDown(int keyCode, KeyEvent event) {
+    if (panel.getVisibility() == View.VISIBLE || tarjeta.getVisibility() == View.VISIBLE) {
+      return super.onKeyDown(keyCode, event);
+    }
+    if (keyCode >= KeyEvent.KEYCODE_0 && keyCode <= KeyEvent.KEYCODE_9) {
+      teclear(keyCode - KeyEvent.KEYCODE_0);
+      return true;
+    }
     switch (keyCode) {
       case KeyEvent.KEYCODE_DPAD_UP:
       case KeyEvent.KEYCODE_CHANNEL_UP:
-        sintonizar((actual + CANALES.length - 1) % CANALES.length);
+        zapping(-1);
         return true;
       case KeyEvent.KEYCODE_DPAD_DOWN:
       case KeyEvent.KEYCODE_CHANNEL_DOWN:
-        sintonizar((actual + 1) % CANALES.length);
+        zapping(1);
         return true;
       case KeyEvent.KEYCODE_DPAD_CENTER:
       case KeyEvent.KEYCODE_ENTER:
-        handler.removeCallbacks(ocultarRotulo);
-        rotulo.setVisibility(View.VISIBLE);
-        handler.postDelayed(ocultarRotulo, 4000);
+      case KeyEvent.KEYCODE_DPAD_LEFT:
+      case KeyEvent.KEYCODE_MENU:
+      case KeyEvent.KEYCODE_GUIDE:
+        abrirPanel();
+        return true;
+      case KeyEvent.KEYCODE_DPAD_RIGHT:
+      case KeyEvent.KEYCODE_INFO:
+        if (actual != null) {
+          // Detalles para verificar: de qué servidor viene la señal y de qué lista salió el canal.
+          String calidad = actual.calidad.isEmpty() ? actual.categoria : actual.categoria + " · " + actual.calidad;
+          String detalle = getString(R.string.detalle, calidad, servidor(actual.url), actual.fuente);
+          if (conError) detalle = getString(R.string.sin_senal) + "\n" + detalle;
+          else if (actual.noSiempre) detalle = getString(R.string.no_siempre) + "\n" + detalle;
+          mostrarRotulo(actual, detalle);
+          handler.removeCallbacks(ocultarRotulo);
+          if (!conError) handler.postDelayed(ocultarRotulo, ROTULO_MS * 2);
+        }
         return true;
       default:
         return super.onKeyDown(keyCode, event);
     }
   }
 
-  private void sintonizar(int indice) {
-    actual = indice;
-    handler.removeCallbacks(ocultarRotulo);
-    rotulo.setVisibility(View.VISIBLE);
-    nombre.setText(CANALES[indice][0]);
-    estado.setText(R.string.cargando);
-    // User-Agent honesto: dice qué app es y su versión, nada del equipo ni del usuario.
-    DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
-        .setUserAgent(userAgent)
-        .setAllowCrossProtocolRedirects(true);
-    MediaItem item = new MediaItem.Builder()
-        .setUri(Uri.parse(CANALES[indice][1]))
-        .setMimeType(MimeTypes.APPLICATION_M3U8)
-        .build();
-    inicio = SystemClock.elapsedRealtime();
-    player.setMediaSource(new HlsMediaSource.Factory(http).createMediaSource(item));
-    player.prepare();
-    player.setPlayWhenReady(true);
+  /** Filas de las dos columnas del panel. */
+  private final class FilasAdapter extends BaseAdapter {
+    private final boolean deCategorias;
+
+    FilasAdapter(boolean deCategorias) {
+      this.deCategorias = deCategorias;
+    }
+
+    @Override
+    public int getCount() {
+      return deCategorias ? categorias.size() : visibles.size();
+    }
+
+    @Override
+    public Object getItem(int i) {
+      return deCategorias ? categorias.get(i) : visibles.get(i);
+    }
+
+    @Override
+    public long getItemId(int i) {
+      return i;
+    }
+
+    @Override
+    public View getView(int i, View fila, ViewGroup parent) {
+      if (fila == null) fila = LayoutInflater.from(Reproductor.this).inflate(R.layout.fila, parent, false);
+      TextView numero = fila.findViewById(R.id.numero);
+      TextView nombre = fila.findViewById(R.id.nombre);
+      TextView marca = fila.findViewById(R.id.marca);
+      fila.setBackgroundResource(deCategorias ? R.drawable.fila_activa : 0);
+      if (deCategorias) {
+        numero.setVisibility(View.GONE);
+        nombre.setText(categorias.get(i));
+        marca.setText("");
+      } else {
+        Canal c = visibles.get(i);
+        numero.setVisibility(View.VISIBLE);
+        numero.setText(String.valueOf(c.numero));
+        nombre.setText(c.nombre);
+        String m = c.equals(actual) ? "▶" : (c.url.startsWith(Catalogo.APP) ? getString(R.string.marca_app) : "");
+        if (favoritos.contains(c.id)) m = m.isEmpty() ? "★" : m + " ★";
+        marca.setText(m);
+      }
+      return fila;
+    }
   }
 }

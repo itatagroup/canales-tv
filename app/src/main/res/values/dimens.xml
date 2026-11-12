@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Interfaz para ver a 3 m: nada bajo 18sp, margen de seguridad del 5 % de la pantalla. -->
+<resources>
+  <dimen name="seguro_h">48dp</dimen>
+  <dimen name="seguro_v">27dp</dimen>
+  <dimen name="texto_titulo">28sp</dimen>
+  <dimen name="texto_fila">21sp</dimen>
+  <dimen name="texto_ayuda">18sp</dimen>
+  <dimen name="texto_numero_grande">56sp</dimen>
+  <dimen name="alto_fila">48dp</dimen>
+  <dimen name="ancho_categorias">230dp</dimen>
+  <dimen name="ancho_canales">360dp</dimen>
+  <dimen name="radio">6dp</dimen>
+</resources>

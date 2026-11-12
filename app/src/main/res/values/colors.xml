@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paleta oliva oscura de las apps de Itatagroup (la del launcher). Contraste medido:
+     texto #F2F3EC sobre panel #22251E = 14,6:1; secundario #C9CDBE = 10,2:1;
+     texto del foco #1B1E16 sobre lima #B5D67A = 11,4:1. -->
+<resources>
+  <color name="fondo">#000000</color>
+  <color name="panel">#F222251E</color>
+  <color name="panel_borde">#3A3F33</color>
+  <color name="texto">#F2F3EC</color>
+  <color name="texto_secundario">#C9CDBE</color>
+  <color name="foco">#B5D67A</color>
+  <color name="texto_foco">#1B1E16</color>
+  <color name="categoria_activa">#33B5D67A</color>
+  <color name="aviso">#F0B37E</color>
+</resources>

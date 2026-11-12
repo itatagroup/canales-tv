@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Foco a 3 m: bloque lima completo, no solo un borde. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+  <item android:state_focused="true"><shape><solid android:color="@color/foco"/><corners android:radius="@dimen/radio"/></shape></item>
+  <item android:state_selected="true"><shape><solid android:color="@color/foco"/><corners android:radius="@dimen/radio"/></shape></item>
+  <item android:state_activated="true"><shape><solid android:color="@color/categoria_activa"/><corners android:radius="@dimen/radio"/></shape></item>
+  <item><shape><solid android:color="@android:color/transparent"/></shape></item>
+</selector>

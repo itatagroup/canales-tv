@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fondo de una categoría: marca la que está abierta mientras el foco anda por los canales. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+  <item android:state_activated="true"><shape><solid android:color="@color/categoria_activa"/><corners android:radius="@dimen/radio"/></shape></item>
+  <item><shape><solid android:color="@android:color/transparent"/></shape></item>
+</selector>
