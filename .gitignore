@@ -1,0 +1,8 @@
+out/
+libs/
+keystore/
+*.apk
+*.jks
+*.idsig
+node_modules/
+dist/

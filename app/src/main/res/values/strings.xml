@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">Canales</string>
+  <string name="cargando">Cargando…</string>
+  <string name="sin_senal">Este canal no responde ahora.</string>
+  <string name="ayuda">↑ ↓ cambiar de canal</string>
+</resources>
