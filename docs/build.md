@@ -39,9 +39,17 @@ powershell -File scripts/instalar.ps1 -Ip <IP de tu TV>
 
 ## Verificación manual
 
-1. La app aparece en el inicio como «Canales» y abre a pantalla completa.
-2. El primer canal muestra imagen y suena; el rótulo indica cuántos milisegundos tardó.
-3. ↑ ↓ cambian de canal; OK vuelve a mostrar el rótulo.
-4. `adb logcat -s Canales` muestra el tiempo de cada canal y los errores.
-5. `adb shell dumpsys package cl.itatagroup.canales | grep permission` muestra solo `INTERNET` y
-   `ACCESS_NETWORK_STATE`.
+En una TV o en el emulador de Android TV (`emulator -avd <tv>`):
+
+1. Primera vez: aparece la bienvenida; «Buscar canales» muestra el avance y termina en menos de un
+   minuto con «N canales encontrados» y «Ver cuáles» (lo que quedó fuera y por qué).
+2. Abre a pantalla completa en el último canal visto; ↑ ↓ cambian de canal, los números van directo,
+   Atrás vuelve al canal anterior, OK o ← abren la lista.
+3. → muestra los detalles: «Ahora / Después» si hay guía, el servidor de la señal y la lista de origen.
+4. Mantener OK sobre un canal lo marca como favorito y aparece en «★ Favoritos».
+5. «Agregar listas»: desde otro equipo de la red (o con `adb forward tcp:8642 tcp:8642` en el
+   emulador) se agrega una lista con el código de la pantalla; sus canales aparecen en «Mis listas».
+6. «Buscar actualización» responde «al día», ofrece la versión nueva, o dice «No se pudo comprobar».
+7. `adb logcat -s Canales` muestra la búsqueda, el tiempo de cada canal y los errores.
+8. `adb shell dumpsys package cl.itatagroup.canales | grep permission` muestra solo `INTERNET`,
+   `ACCESS_NETWORK_STATE` y `REQUEST_INSTALL_PACKAGES`.
