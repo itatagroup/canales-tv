@@ -15,9 +15,14 @@ GPL-3.0.
 ## Ramas
 
 `dev` es la rama de trabajo y `main` la estable. Repo público `itatagroup/canales-tv` (12/11/2026),
-con las mismas reglas que launcher-tv: `main` y `dev` sin borrar ni forzar y con PR aprobado por el
-mantenedor (él puede empujar directo), etiquetas `v*` solo del mantenedor, Actions apagado, escaneo
-de secretos y reporte privado de vulnerabilidades activos. Los cambios entran por pull request contra `dev`.
+`main` y `dev` sin borrar ni forzar y solo por pull request (sin aprobación obligatoria desde el
+12/11/2026: solo quien tiene escritura puede mergear), etiquetas `v*` solo del mantenedor, Actions
+apagado, escaneo de secretos y reporte privado de vulnerabilidades activos. Los cambios entran por
+pull request contra `dev`; `dev` pasa a `main` por pull request antes de cada versión.
+
+Un agente que trabaja para el mantenedor mergea sus propios PR (sin bypass de administrador) solo
+después de las pruebas, la verificación manual de `docs/build.md` y una revisión del cambio, y
+publica una versión solo cuando el mantenedor la pide.
 
 ## Comandos
 
@@ -50,7 +55,5 @@ de secretos y reporte privado de vulnerabilidades activos. Los cambios entran po
 
 ## Qué falta
 
-- Primer release (la búsqueda de actualización no tiene a qué apuntar hasta entonces; ver
-  `docs/actualizaciones.md`).
 - Pruebas automáticas de la interfaz (hoy solo las reglas en el PC y la verificación manual).
 - Guía para «Mis listas» (`url-tvg` de cada lista) y logos de los canales (exigiría conexiones nuevas).
