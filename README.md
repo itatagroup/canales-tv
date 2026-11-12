@@ -3,7 +3,8 @@
 Reproductor de **TV abierta** para Android TV. La idea es una app que haga lo que dice que hace y
 nada más: mostrar canales de señal abierta y gratuita, sin cuentas, sin publicidad propia y sin
 telemetría. Pensada para el control remoto: video a pantalla completa, ↑ ↓ cambian de canal, los
-números van directo, OK abre la lista y Atrás vuelve al canal anterior.
+números van directo, OK abre la lista y Atrás dos veces
+sale de la app (la primera solo avisa).
 
 - Paquete: `cl.itatagroup.canales` · Android 6+ (minSdk 23) · licencia GPL-3.0 (ver `LICENSE`).
 - Rama de trabajo `dev`, estable `main`.

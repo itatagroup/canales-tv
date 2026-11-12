@@ -40,7 +40,7 @@ import java.util.Set;
  * rótulo y la tarjeta central (bienvenida, búsqueda, «Qué hace esta app»).
  *
  * <p>Control remoto: ↑ ↓ canal anterior y siguiente · números: ir a ese canal · OK o ←: lista ·
- * Atrás: volver al canal que viste antes (o salir si no hay).
+ * Atrás dos veces: salir (la primera solo avisa, para no cerrar la app por accidente).
  */
 public class Reproductor extends Activity {
   private static final String TAG = "Canales";
@@ -85,7 +85,9 @@ public class Reproductor extends Activity {
   /** Programación por id de canal, de la última búsqueda. */
   private java.util.Map<String, List<Guia.Programa>> guia = new java.util.HashMap<>();
 
-  private Canal actual, anterior;
+  private Canal actual;
+  /** Cuándo se pulsó Atrás sobre el video; otro Atrás antes de ROTULO_MS cierra la app. */
+  private long atrasEn;
   private long inicio;
   private boolean conError;
   /** Ya se reintentó este canal con su primera variante. */
@@ -187,9 +189,8 @@ public class Reproductor extends Activity {
         conError = true;
         // Sin señal: negro, no la última imagen del canal anterior congelada.
         video.setVisibility(View.INVISIBLE);
-        handler.removeCallbacks(ocultarRotulo);
-        rotulo.setVisibility(View.VISIBLE);
-        rotuloEstado.setText(R.string.sin_senal);
+        // El rótulo completo (no solo el estado): pudo estar mostrando un aviso.
+        if (actual != null) mostrarRotulo(actual, getString(R.string.sin_senal));
       }
     });
     if (actual != null) reproducir(actual);
@@ -278,7 +279,6 @@ public class Reproductor extends Activity {
       abrirAppOficial(c);
       return;
     }
-    if (actual != null && !actual.id.equals(c.id)) anterior = actual;
     actual = c;
     almacen.recordar(c.id);
     reproducir(c);
@@ -326,8 +326,7 @@ public class Reproductor extends Activity {
         if (v == null) {
           conError = true;
           video.setVisibility(View.INVISIBLE);
-          rotulo.setVisibility(View.VISIBLE);
-          rotuloEstado.setText(R.string.sin_senal);
+          mostrarRotulo(c, getString(R.string.sin_senal));
         } else {
           Log.i(TAG, c.nombre + ": se reintenta con la variante " + v);
           reproducirUrl(v);
@@ -405,6 +404,8 @@ public class Reproductor extends Activity {
     rotuloNumero.setText(String.valueOf(c.numero));
     rotuloNombre.setText(favoritos.contains(c.id) ? "★ " + c.nombre : c.nombre);
     rotuloEstado.setText(estado);
+    rotuloNumero.setVisibility(View.VISIBLE);
+    rotuloEstado.setVisibility(View.VISIBLE);
     rotulo.setVisibility(View.VISIBLE);
   }
 
@@ -416,9 +417,9 @@ public class Reproductor extends Activity {
   /** Un aviso corto en el rótulo, sin tapar el video. */
   private void avisar(String texto) {
     handler.removeCallbacks(ocultarRotulo);
-    rotuloNumero.setText("");
+    rotuloNumero.setVisibility(View.GONE); // sin número ni estado: el recuadro queda justo al texto
     rotuloNombre.setText(texto);
-    rotuloEstado.setText("");
+    rotuloEstado.setVisibility(View.GONE);
     rotulo.setVisibility(View.VISIBLE);
     handler.postDelayed(ocultarRotulo, ROTULO_MS);
   }
@@ -771,15 +772,22 @@ public class Reproductor extends Activity {
       else cerrarTarjeta();
     } else if (panel.getVisibility() == View.VISIBLE) {
       cerrarPanel();
-    } else if (anterior != null && todos.contains(anterior)) {
-      sintonizar(anterior); // como en una tele: Atrás vuelve al canal de antes
     } else {
-      super.onBackPressed();
+      // Dos veces para salir: un Atrás suelto no cierra la app (dura lo mismo que el aviso).
+      long ahora = SystemClock.uptimeMillis();
+      if (atrasEn != 0 && ahora - atrasEn < ROTULO_MS) {
+        super.onBackPressed();
+      } else {
+        atrasEn = ahora;
+        avisar(getString(R.string.atras_otra_vez));
+      }
     }
   }
 
   @Override
   public boolean onKeyDown(int keyCode, KeyEvent event) {
+    // Otra tecla entre medio (zapping, lista) anula el primer Atrás: el segundo vuelve a avisar.
+    if (keyCode != KeyEvent.KEYCODE_BACK) atrasEn = 0;
     if (panel.getVisibility() == View.VISIBLE || tarjeta.getVisibility() == View.VISIBLE) {
       return super.onKeyDown(keyCode, event);
     }

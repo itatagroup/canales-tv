@@ -9,6 +9,7 @@
   <string name="sin_favoritos">Mantén OK sobre un canal para marcarlo como favorito.</string>
   <string name="buscar">Buscar canales</string>
   <string name="acerca">Qué hace esta app</string>
+  <string name="atras_otra_vez">Presiona Atrás otra vez para salir</string>
   <string name="ayuda_panel">OK ver  ·  mantén OK: favorito  ·  ← → cambiar columna  ·  Atrás cerrar</string>
   <string name="bienvenida_titulo">Canales abiertos y gratuitos</string>
   <string name="bienvenida_texto">Esta app busca los canales de señal abierta que se pueden ver por internet: nacionales, regionales, noticias, radios con video y algunos internacionales gratuitos. No tiene publicidad propia, no pide cuentas y no envía datos de tu equipo. La búsqueda baja la lista pública de iptv-org y prueba cada canal; tarda menos de un minuto.</string>
