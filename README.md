@@ -6,6 +6,8 @@ telemetría. Pensada para el control remoto: video a pantalla completa, ↑ ↓ 
 números van directo, OK abre la lista y Atrás dos veces
 sale de la app (la primera solo avisa).
 
+**Descargas: [releases de GitHub](https://github.com/itatagroup/canales-tv/releases)** (el APK de la app, firmado; la última es «Latest»).
+
 - Paquete: `cl.itatagroup.canales` · Android 6+ (minSdk 23) · licencia GPL-3.0 (ver `LICENSE`).
 - Rama de trabajo `dev`, estable `main`.
 
