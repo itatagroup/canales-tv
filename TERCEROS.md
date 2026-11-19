@@ -7,7 +7,7 @@ en `tools/dependencias.json`, y el build se niega a usar un archivo que no coinc
 | Librería | Versión | Para qué | Origen |
 |---|---|---|---|
 | androidx.media3: common, container, datasource, database, decoder, extractor, exoplayer, exoplayer-hls | 1.11.1 | Reproducir HLS (el formato de los canales) | Google Maven |
-| com.google.guava: guava, failureaccess | 33.3.1-android, 1.0.2 | La usa Media3 | Maven Central |
+| com.google.guava: guava, failureaccess | 33.8.0-android, 1.0.3 | La usa Media3 | Maven Central |
 | androidx.exifinterface | 1.3.6 | La declara Media3 | Google Maven |
 | androidx.concurrent: concurrent-futures | 1.2.0 | La declara Media3 HLS | Google Maven |
 

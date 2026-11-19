@@ -11,5 +11,6 @@
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn com.google.j2objc.annotations.**
 -dontwarn org.checkerframework.**
+-dontwarn org.jspecify.annotations.**
 -dontwarn javax.annotation.**
 -dontwarn kotlin.**
